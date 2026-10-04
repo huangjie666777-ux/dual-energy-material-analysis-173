@@ -71,3 +71,19 @@ def test_unknown_filter_rejected():
     sino = np.zeros((4, 8))
     with pytest.raises(ValueError):
         fbp(sino, 1.0, 3.5, 8, 1.0, filter_name="cosine")
+
+
+def test_reconstruction_invariant_to_detector_spacing():
+    common = dict(n_angles=180, center_index=None,
+                  disk_center_mm=(0.0, 0.0), radius_mm=10.0, attenuation=0.25)
+    values = []
+    for spacing, n_det in ((0.5, 256), (0.25, 512), (1.0, 128)):
+        truth = disk_sinogram(
+            common["n_angles"], n_det, spacing, (n_det - 1) / 2,
+            common["disk_center_mm"], common["radius_mm"], common["attenuation"],
+        )
+        image = fbp(truth, spacing, (n_det - 1) / 2, 128, 0.5, "ram-lak")
+        values.append(image[64, 64])
+    for value in values:
+        assert value == pytest.approx(0.25, abs=0.05)
+

@@ -23,7 +23,7 @@ def _ramp_filter(n_fft: int, detector_spacing: float, name: str) -> np.ndarray:
     """Frequency response sampled on the FFT grid (cycles/mm)."""
     frequencies = np.fft.fftfreq(n_fft, d=detector_spacing)
     nyquist = 0.5 / detector_spacing
-    ramp = 2.0 * np.abs(frequencies)
+    ramp = np.abs(frequencies)
     if name == "hann":
         window = np.where(
             np.abs(frequencies) <= nyquist,
@@ -38,16 +38,20 @@ def _ramp_filter(n_fft: int, detector_spacing: float, name: str) -> np.ndarray:
 
 
 def filter_sinogram(sinogram: np.ndarray, detector_spacing: float, name: str) -> np.ndarray:
-    """Apply the ramp filter row-wise with FFT zero-padding."""
+    """Apply the ramp filter row-wise with FFT zero-padding.
+
+    With the response sampled on the physical frequency grid (cycles/mm),
+    the inverse FFT already carries the correct 1/detector_spacing measure,
+    so no extra detector-spacing factor is applied to the result.
+    """
     if name not in FILTERS:
         raise ValueError(f"unknown filter {name!r}")
     n_det = sinogram.shape[1]
     n_fft = _next_fft_length(n_det)
     response = _ramp_filter(n_fft, detector_spacing, name)
     spectrum = np.fft.fft(sinogram, n=n_fft, axis=1)
-    # Trapezoidal integration weight (detector spacing) for the convolution sum.
     filtered = np.fft.ifft(spectrum * response[np.newaxis, :], axis=1).real
-    return filtered[:, :n_det] * detector_spacing
+    return filtered[:, :n_det]
 
 
 def fbp(
@@ -62,10 +66,10 @@ def fbp(
 
     Coordinate convention: the geometric center of the image is the origin;
     columns point to +x, rows point to +y. At angle 0 the ray normal is +x,
-    so detector coordinate ``t = x*cos(theta) + y*sin(theta)`` with
-    ``t = (detector_index - center_index) * detector_spacing``.
+    so detector coordinate t = x*cos(theta) + y*sin(theta) with
+    t = (detector_index - center_index) * detector_spacing.
 
-    Returns an ``output_size x output_size`` array of linear attenuation
+    Returns an output_size x output_size array of linear attenuation
     coefficients in mm^-1.
     """
     sinogram = np.asarray(sinogram, dtype=np.float64)
@@ -95,3 +99,4 @@ def fbp(
 
     # Integrate over theta in radians. No per-image normalization is applied.
     return reconstruction * angle_step
+
